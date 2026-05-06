@@ -41,10 +41,12 @@ export function createMessageCollector(options: CreateMessageCollectorOptions): 
 
   const log = (message: string) => {
     console.log(message)
+    messages.push(message)
   }
 
   const error = (message: string) => {
     console.error(message)
+    messages.push(message)
     hasError = true
   }
 
@@ -89,7 +91,7 @@ export function createMessageCollector(options: CreateMessageCollectorOptions): 
   }
 
   const push = async () => {
-    const title = '【森空岛每日签到】'
+    const title = hasError ? '〖森空岛每日签到失败〗' : '〖森空岛每日签到成功〗'
     const content = messages.join('\n\n')
     const urls = options.notificationUrls ? toArray(options.notificationUrls) : []
     const sender = createSender(urls)
