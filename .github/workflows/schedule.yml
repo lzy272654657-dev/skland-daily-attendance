@@ -2,7 +2,7 @@ name: attendance
 
 on:
   schedule:
-    - cron: '0 16 * * *'
+    - cron: "0 16 * * *"
   workflow_dispatch:
   workflow_call:
     secrets:
@@ -24,6 +24,7 @@ on:
 jobs:
   attendance:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -39,16 +40,73 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24.13.0
-          cache: 'pnpm'
-          cache-dependency-path: '**/pnpm-lock.yaml'
+          cache: pnpm
+          cache-dependency-path: "**/pnpm-lock.yaml"
 
       - name: Install dependencies
         run: pnpm install
 
       - name: Run daily attendance
-        run: pnpm action
+        id: attendance
+        shell: bash
+        continue-on-error: true
+        run: |
+          set +e
+          pnpm action 2>&1 | tee attendance.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
         env:
           SKLAND_TOKENS: ${{ secrets.SKLAND_TOKENS }}
           SKLAND_NOTIFICATION_URLS: ${{ secrets.SKLAND_NOTIFICATION_URLS }}
           SKLAND_MAX_RETRIES: ${{ secrets.MAX_RETRIES }}
           SKLAND_ANONYMOUS: ${{ secrets.SKLAND_ANONYMOUS }}
+
+      - name: Notify ServerChan
+        if: always()
+        shell: bash
+        env:
+          SKLAND_NOTIFICATION_URLS: ${{ secrets.SKLAND_NOTIFICATION_URLS }}
+        run: |
+          set -u
+
+          if [ -z "${SKLAND_NOTIFICATION_URLS:-}" ]; then
+            echo "::error::SKLAND_NOTIFICATION_URLS is empty"
+            exit 1
+          fi
+
+          URL="${SKLAND_NOTIFICATION_URLS%%,*}"
+          URL="$(printf '%s' "$URL" | tr -d '\r\n' | xargs)"
+          SENDKEY="${URL#schan://}"
+
+          if [ "$SENDKEY" = "$URL" ]; then
+            echo "::error::SKLAND_NOTIFICATION_URLS must start with schan://"
+            exit 1
+          fi
+
+          if [ -f attendance.log ] && grep -q '"result": "success"' attendance.log; then
+            TITLE="森空岛每日签到成功"
+          else
+            TITLE="森空岛每日签到异常"
+          fi
+
+          if [ -f attendance.log ]; then
+            SUMMARY="$(grep -E '今天已经签到过了|签到成功|签到失败|任务执行成功|任务执行失败|result|Error|error|失败|异常' attendance.log | tail -n 40 || true)"
+          else
+            SUMMARY="未找到 attendance.log，但通知步骤已执行。"
+          fi
+
+          if [ -z "${SUMMARY:-}" ]; then
+            SUMMARY="签到任务已执行，但没有匹配到摘要日志。"
+          fi
+
+          echo "Notify step is running"
+          echo "Summary length: ${#SUMMARY}"
+
+          curl -sS --get "https://sctapi.ftqq.com/${SENDKEY}.send" \
+            --data-urlencode "title=${TITLE}" \
+            --data-urlencode "desp=${SUMMARY}" \
+            -o serverchan-response.json
+
+          echo "ServerChan response:"
+          cat serverchan-response.json
