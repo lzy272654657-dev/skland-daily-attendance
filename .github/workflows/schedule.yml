@@ -45,16 +45,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Test ServerChan notification
-        env:
-          SKLAND_NOTIFICATION_URLS: ${{ secrets.SKLAND_NOTIFICATION_URLS }}
-        run: |
-          URL="${SKLAND_NOTIFICATION_URLS%%,*}"
-          SENDKEY="${URL#schan://}"
-          curl -fsS --get "https://sctapi.ftqq.com/${SENDKEY}.send" \
-            --data-urlencode "title=GitHub Actions 测试通知" \
-            --data-urlencode "desp=如果你收到这条，说明 Server酱和 GitHub Actions 网络都没问题"
-
       - name: Run daily attendance
         run: pnpm action
         env:
